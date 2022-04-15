@@ -27,9 +27,25 @@ Option<int> proxyPortOption =
 proxyPortOption.AddAlias("-l");
 rootCommand.Add(proxyPortOption);
 
-rootCommand.SetHandler(async (string hostName, int hostPort, int proxyPort) =>
+Option<string> terminalTypeOption =
+    new("--term-type", () => "xterm", "Terminal type to use for the client.");
+terminalTypeOption.AddAlias("-t");
+rootCommand.Add(terminalTypeOption);
+
+Option<bool> mccpOption =
+    new("--mccp2", "Enable Mud Client Compression V2 if the server supports it.");
+mccpOption.AddAlias("-c");
+rootCommand.Add(mccpOption);
+
+Option<bool> mxpOption = new("--mxp", "Enable Mud Extension Protocol if the server supports it.");
+mxpOption.AddAlias("-x");
+rootCommand.Add(mxpOption);
+
+rootCommand.SetHandler(async (
+    string hostName, int hostPort, int proxyPort, string terminalType, bool enableMccp2, bool enableMxp
+) =>
 {
-    Proxy proxy = new();
+    Proxy proxy = new(terminalType, enableMccp2, enableMxp);
 
     Task clientTask = proxy.ListenForClientsAsync(proxyPort, cancelToken);
     Console.WriteLine("Listening for clients on port {0}", proxyPort);
@@ -45,7 +61,7 @@ rootCommand.SetHandler(async (string hostName, int hostPort, int proxyPort) =>
     await Task.WhenAll(clientTask, hostTask);
 
     Console.WriteLine("Program exiting.");
-}, hostNameOption, hostPortOption, proxyPortOption);
+}, hostNameOption, hostPortOption, proxyPortOption, terminalTypeOption, mccpOption, mxpOption);
 
 await rootCommand.InvokeAsync(args);
 

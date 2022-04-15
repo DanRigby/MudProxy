@@ -1,8 +1,12 @@
 ﻿namespace MudProxy;
 
 // ReSharper disable InconsistentNaming
-public enum TelnetCommand : byte
+public enum ProtocolValue : byte
 {
+    //
+    // Telnet Commands
+    //
+
     // 240 - Sub Option End
     SE = 0xf0,
 
@@ -22,19 +26,20 @@ public enum TelnetCommand : byte
     DONT = 0xfe,
 
     // 255 - Interpret As Command
-    IAC = 0xff
-}
+    IAC = 0xff,
 
-public enum TelnetOption : byte
-{
+    //
+    // Telnet Options
+    //
+
     // 24 - Terminal Type
-    TT = 0x18,
+    TERMTYPE = 0x18,
 
     // 31 - Window Size
-    WS = 0x1f,
+    WINDOWSIZE = 0x1f,
 
     // 39 - New Environment
-    NE = 0x27,
+    NEWENVIRONMENT = 0x27,
 
     // 70 - MUD Server Status Protocol
     // https://mudhalla.net/tintin/protocols/mssp/
@@ -69,7 +74,6 @@ public enum TelnetOption : byte
     GMCP = 0xc9
 }
 // ReSharper enable InconsistentNaming
-
 
 /*
 https://mudcoders.fandom.com/wiki/List_of_Telnet_Options
