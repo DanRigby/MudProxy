@@ -11,18 +11,12 @@ public class Proxy
 {
     public Proxy(string terminalType, bool enableMccp2, bool enableMxp)
     {
-        TerminalType = terminalType;
-        EnableMccp2 = enableMccp2;
-        EnableMxp = enableMxp;
+        _proxyConfig = new ProxyConfiguration(terminalType, enableMccp2, enableMxp, false);
     }
 
-    private string TerminalType { get; }
-    private bool EnableMccp2 { get; }
-    private bool EnableMxp { get; }
-
     private readonly ConcurrentDictionary<NetworkStream, byte> _clientStreams = new();
-    private NetworkStream? _hostStream;
-    private bool _decompressionRequired;
+    private NetworkStream? _hostNetworkStream;
+    private readonly ProxyConfiguration _proxyConfig;
 
     public async Task ConnectToHostAsync(string hostName, int port, CancellationToken cancelToken)
     {
@@ -43,8 +37,6 @@ public class Proxy
         }
         catch (OperationCanceledException)
         {
-            // This happens when the user hits Ctrl-C
-            // We don't need to do anything here
         }
         catch (Exception e)
         {
@@ -79,8 +71,6 @@ public class Proxy
         }
         catch (OperationCanceledException)
         {
-            // This happens when the user hits Ctrl-C
-            // We don't need to do anything here
         }
         catch (Exception e)
         {
@@ -93,7 +83,7 @@ public class Proxy
         try
         {
             await using NetworkStream hostNetworkStream = hostClient.GetStream();
-            _hostStream = hostNetworkStream;
+            _hostNetworkStream = hostNetworkStream;
 
             byte[] buffer = ArrayPool<byte>.Shared.Rent(1024 * 8); // 8KB
             while (true)
@@ -105,9 +95,10 @@ public class Proxy
                 }
 
                 int index = 0;
+                List<byte> outputBuffer = new();
 
                 Decompress:
-                if (_decompressionRequired)
+                if (_proxyConfig.DecompressionRequired)
                 {
                     ZLibStream zLibStream = new(
                         new MemoryStream(buffer, index, bytesRead), CompressionMode.Decompress, false);
@@ -121,8 +112,8 @@ public class Proxy
                 {
                     if (buffer[index] == (byte)ProtocolValue.IAC)
                     {
-                        int bytesProcessed =
-                            await ProcessTelnetCommandAsync(buffer[index..bytesRead], hostNetworkStream, cancelToken);
+                        int bytesProcessed = TelnetCommandHandler.ProcessCommand(
+                            buffer[index..bytesRead], outputBuffer, false, _proxyConfig);
                         index += bytesProcessed - 1;
                     }
                     else
@@ -131,12 +122,22 @@ public class Proxy
                     }
                 }
 
-                foreach (NetworkStream clientStream in _clientStreams.Keys)
+                if (clientDataLength > 0)
                 {
-                    await clientStream.WriteAsync(clientData.AsMemory(0, clientDataLength), cancelToken);
+                    Console.WriteLine("[HOST]: {0}", Encoding.ASCII.GetString(clientData, 0, clientDataLength));
                 }
 
-                Console.WriteLine(Encoding.ASCII.GetString(clientData, 0, clientDataLength));
+                if (outputBuffer.Count > 0)
+                {
+                    Console.WriteLine("[PROXY-H]: {0}", TelnetCommandHandler.CommandsToString(outputBuffer.ToArray()));
+                    await hostNetworkStream.WriteAsync(
+                        outputBuffer.ToArray().AsMemory(0, outputBuffer.Count), cancelToken);
+                }
+
+                foreach (NetworkStream clientNetworkStream in _clientStreams.Keys)
+                {
+                    await clientNetworkStream.WriteAsync(clientData.AsMemory(0, clientDataLength), cancelToken);
+                }
 
                 ArrayPool<byte>.Shared.Return(clientData);
 
@@ -148,6 +149,9 @@ public class Proxy
             }
 
             ArrayPool<byte>.Shared.Return(buffer);
+        }
+        catch (OperationCanceledException)
+        {
         }
         catch (Exception e)
         {
@@ -167,6 +171,12 @@ public class Proxy
 
             _clientStreams[clientNetworkStream] = 0;
 
+            if (_proxyConfig.EnableMxp)
+            {
+                await clientNetworkStream.WriteAsync(
+                    new[] { (byte)ProtocolValue.IAC, (byte)ProtocolValue.DO, (byte)ProtocolValue.MXP }, cancelToken);
+            }
+
             byte[] buffer = ArrayPool<byte>.Shared.Rent(1024 * 8); // 8KB
             while (true)
             {
@@ -179,13 +189,48 @@ public class Proxy
                     break;
                 }
 
-                if (_hostStream != null)
+                int hostDataLength = 0;
+                byte[] hostData = ArrayPool<byte>.Shared.Rent(bytesRead);
+
+                List<byte> outputBuffer = new();
+                for (int index = 0; index < bytesRead; index++)
                 {
-                    await _hostStream.WriteAsync(buffer.AsMemory(0, bytesRead), cancelToken);
+                    if (buffer[index] == (byte)ProtocolValue.IAC)
+                    {
+                        int bytesProcessed = TelnetCommandHandler.ProcessCommand(
+                            buffer[index..bytesRead], outputBuffer, true, _proxyConfig);
+                        index += bytesProcessed - 1;
+                    }
+                    else
+                    {
+                        hostData[hostDataLength++] = buffer[index];
+                    }
                 }
+
+                if (hostDataLength > 0)
+                {
+                    Console.WriteLine("[CLIENT]: {0}", Encoding.ASCII.GetString(hostData, 0, hostDataLength));
+                }
+
+                if (outputBuffer.Count > 0)
+                {
+                    Console.WriteLine("[PROXY-C]: {0}", TelnetCommandHandler.CommandsToString(outputBuffer.ToArray()));
+                    await clientNetworkStream.WriteAsync(
+                        outputBuffer.ToArray().AsMemory(0, outputBuffer.Count), cancelToken);
+                }
+
+                if (_hostNetworkStream != null)
+                {
+                    await _hostNetworkStream.WriteAsync(buffer.AsMemory(0, bytesRead), cancelToken);
+                }
+
+                ArrayPool<byte>.Shared.Return(hostData);
             }
 
             ArrayPool<byte>.Shared.Return(buffer);
+        }
+        catch (OperationCanceledException)
+        {
         }
         catch (Exception e)
         {
@@ -196,129 +241,5 @@ public class Proxy
         {
             client.Close();
         }
-    }
-
-    private async Task<int> ProcessTelnetCommandAsync(
-        byte[] buffer, NetworkStream hostNetworkStream, CancellationToken cancelToken)
-    {
-        int bytesProcessed = 1;
-
-        if (buffer.Length > 1)
-        {
-            switch (buffer[1])
-            {
-                case (byte)ProtocolValue.WILL:
-                case (byte)ProtocolValue.WONT:
-                case (byte)ProtocolValue.DO:
-                case (byte)ProtocolValue.DONT:
-                    bytesProcessed = 3;
-                    break;
-                case (byte)ProtocolValue.SB:
-                {
-                    for (int i = 2; i < buffer.Length; i++)
-                    {
-                        if (buffer[i] == (byte)ProtocolValue.SE)
-                        {
-                            bytesProcessed = i + 1;
-                            break;
-                        }
-                    }
-
-                    break;
-                }
-                default:
-                    bytesProcessed = 2;
-                    break;
-            }
-        }
-
-        if (ProtocolSequence.IsTerminalTypeNegotiation(buffer))
-        {
-            await hostNetworkStream.WriteAsync(
-                new[] { (byte)ProtocolValue.IAC, (byte)ProtocolValue.WILL, (byte)ProtocolValue.TERMTYPE },
-                cancelToken);
-        }
-        else if (ProtocolSequence.IsTerminalTypeSendRequest(buffer))
-        {
-            // ReSharper disable once UseObjectOrCollectionInitializer
-            List<byte> responseBytes = new();
-            responseBytes.Add((byte)ProtocolValue.IAC);
-            responseBytes.Add((byte)ProtocolValue.SB);
-            responseBytes.Add((byte)ProtocolValue.TERMTYPE);
-            responseBytes.Add(0x00); // Value / Is
-            responseBytes.AddRange(Encoding.ASCII.GetBytes(TerminalType));
-            responseBytes.Add((byte)ProtocolValue.IAC);
-            responseBytes.Add((byte)ProtocolValue.SE);
-
-            await hostNetworkStream.WriteAsync(responseBytes.ToArray(), cancelToken);
-        }
-        else if (ProtocolSequence.IsWindowSizeNegotiation(buffer))
-        {
-            await hostNetworkStream.WriteAsync(
-                new[] { (byte)ProtocolValue.IAC, (byte)ProtocolValue.WONT, (byte)ProtocolValue.WINDOWSIZE },
-                cancelToken);
-        }
-        else if (ProtocolSequence.IsNewEnvironmentNegotiation(buffer))
-        {
-            await hostNetworkStream.WriteAsync(
-                new[] { (byte)ProtocolValue.IAC, (byte)ProtocolValue.WONT, (byte)ProtocolValue.NEWENVIRONMENT },
-                cancelToken);
-        }
-        else if (ProtocolSequence.IsMccp2Negotiation(buffer))
-        {
-            await hostNetworkStream.WriteAsync(new[]
-                {
-                    (byte)ProtocolValue.IAC,
-                    EnableMccp2 ? (byte)ProtocolValue.DO : (byte)ProtocolValue.DONT,
-                    (byte)ProtocolValue.MCCP2
-                }, cancelToken);
-        }
-        else if (ProtocolSequence.IsMccp2Confirmation(buffer))
-        {
-            _decompressionRequired = true;
-        }
-        else if (ProtocolSequence.IsMccp1Negotiation(buffer))
-        {
-            await hostNetworkStream.WriteAsync(
-                new[] { (byte)ProtocolValue.IAC, (byte)ProtocolValue.DONT, (byte)ProtocolValue.MCCP1 },
-                cancelToken);
-        }
-        else if (ProtocolSequence.IsMxpNegotiation(buffer))
-        {
-            await hostNetworkStream.WriteAsync(new[]
-            {
-                (byte)ProtocolValue.IAC,
-                EnableMxp ? (byte)ProtocolValue.WILL : (byte)ProtocolValue.WONT,
-                (byte)ProtocolValue.MXP
-            }, cancelToken);
-        }
-        else if (ProtocolSequence.IsGmcpNegotiation(buffer))
-        {
-            await hostNetworkStream.WriteAsync(
-                new[] { (byte)ProtocolValue.IAC, (byte)ProtocolValue.DONT, (byte)ProtocolValue.GMCP },
-                cancelToken);
-        }
-        else if (ProtocolSequence.IsZmpNegotiation(buffer))
-        {
-            await hostNetworkStream.WriteAsync(
-                new[] { (byte)ProtocolValue.IAC, (byte)ProtocolValue.DONT, (byte)ProtocolValue.ZMP },
-                cancelToken);
-        }
-        else if (ProtocolSequence.IsMsspNegotiation(buffer))
-        {
-            await hostNetworkStream.WriteAsync(
-                new[] { (byte)ProtocolValue.IAC, (byte)ProtocolValue.DONT, (byte)ProtocolValue.MSSP },
-                cancelToken);
-        }
-
-        Console.Write("IAC");
-        for (int i = 1; i < bytesProcessed; i++)
-        {
-            Console.Write(" " +
-                (Enum.GetName(typeof(ProtocolValue), buffer[i]) ?? string.Format("0x{0:X2} ({0})", buffer[i])));
-        }
-        Console.WriteLine();
-
-        return bytesProcessed;
     }
 }

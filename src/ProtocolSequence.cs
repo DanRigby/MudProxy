@@ -1,4 +1,6 @@
-﻿namespace MudProxy;
+﻿// ReSharper disable IdentifierTypo
+
+namespace MudProxy;
 
 public static class ProtocolSequence
 {
@@ -17,10 +19,10 @@ public static class ProtocolSequence
             data.Length >= 6
             && data[0] == (byte)ProtocolValue.IAC
             && data[1] == (byte)ProtocolValue.SB
-            && data[1] == (byte)ProtocolValue.TERMTYPE
-            && data[1] == 0x01 // Send request
-            && data[1] == (byte)ProtocolValue.IAC
-            && data[2] == (byte)ProtocolValue.SE;
+            && data[2] == (byte)ProtocolValue.TERMTYPE
+            && data[3] == 0x01 // Send request
+            && data[4] == (byte)ProtocolValue.IAC
+            && data[5] == (byte)ProtocolValue.SE;
     }
 
     public static bool IsWindowSizeNegotiation(byte[] data)
@@ -29,7 +31,7 @@ public static class ProtocolSequence
             data.Length >= 3
             && data[0] == (byte)ProtocolValue.IAC
             && data[1] == (byte)ProtocolValue.DO
-            && data[2] == (byte)ProtocolValue.WINDOWSIZE;
+            && data[2] == (byte)ProtocolValue.NAWS;
     }
 
     public static bool IsNewEnvironmentNegotiation(byte[] data)
@@ -56,9 +58,9 @@ public static class ProtocolSequence
             data.Length >= 5
             && data[0] == (byte)ProtocolValue.IAC
             && data[1] == (byte)ProtocolValue.SB
-            && data[1] == (byte)ProtocolValue.MCCP2
-            && data[1] == (byte)ProtocolValue.IAC
-            && data[2] == (byte)ProtocolValue.SE;
+            && data[2] == (byte)ProtocolValue.MCCP2
+            && data[3] == (byte)ProtocolValue.IAC
+            && data[4] == (byte)ProtocolValue.SE;
     }
 
     public static bool IsMccp1Negotiation(byte[] data)
@@ -77,6 +79,26 @@ public static class ProtocolSequence
             && data[0] == (byte)ProtocolValue.IAC
             && data[1] == (byte)ProtocolValue.DO
             && data[2] == (byte)ProtocolValue.MXP;
+    }
+
+    public static bool IsMxpClientNegotiation(byte[] data)
+    {
+        return
+            data.Length >= 3
+            && data[0] == (byte)ProtocolValue.IAC
+            && data[1] == (byte)ProtocolValue.WILL
+            && data[2] == (byte)ProtocolValue.MXP;
+    }
+
+    public static bool IsMxpConfirmation(byte[] data)
+    {
+        return
+            data.Length >= 5
+            && data[0] == (byte)ProtocolValue.IAC
+            && data[1] == (byte)ProtocolValue.SB
+            && data[2] == (byte)ProtocolValue.MXP
+            && data[3] == (byte)ProtocolValue.IAC
+            && data[4] == (byte)ProtocolValue.SE;
     }
 
     public static bool IsGmcpNegotiation(byte[] data)

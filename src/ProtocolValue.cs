@@ -1,45 +1,111 @@
-﻿namespace MudProxy;
+﻿// ReSharper disable InconsistentNaming
+// ReSharper disable IdentifierTypo
+// ReSharper disable CommentTypo
 
-// ReSharper disable InconsistentNaming
+namespace MudProxy;
+
 public enum ProtocolValue : byte
 {
     //
     // Telnet Commands
     //
 
+    // 239 - End Of Record
+    EF = 0xEF,
+
     // 240 - Sub Option End
-    SE = 0xf0,
+    SE = 0xF0,
+
+    // 241 - No Operation
+    NOP = 0xF1,
+
+    // 242 - Data Mark
+    DM = 0xF2,
+
+    // 243 - Break
+    BRK = 0xF3,
+
+    // 244 - Interrupt Process
+    IP = 0xF4,
+
+    // 245 - Abort Output
+    AO = 0xF5,
+
+    // 246 - Are You There
+    AYT = 0xF6,
+
+    // 247 - Erase Character
+    EC = 0xF7,
+
+    // 248 - Erase Line
+    EL = 0xF8,
+
+    // 249 - Go Ahead
+    GA = 0xF9,
 
     // 250 - Sub Option Begin
-    SB = 0xfa,
+    SB = 0xFA,
 
     // 251 - Will
-    WILL = 0xfb,
+    WILL = 0xFB,
 
     // 252 - Wont
-    WONT = 0xfc,
+    WONT = 0xFC,
 
     // 253 - Do
-    DO = 0xfd,
+    DO = 0xFD,
 
     // 254 - Dont
-    DONT = 0xfe,
+    DONT = 0xFE,
 
     // 255 - Interpret As Command
-    IAC = 0xff,
+    IAC = 0xFF,
 
     //
     // Telnet Options
     //
 
+    // 0 - Null
+    NULL = 0x00,
+
+    // 1 - Echo
+    ECHO = 0x01,
+
+    // 3 - Suppress Go Ahead
+    SGA = 0x03,
+
+    // 5 - Status
+    STATUS = 0x05,
+
+    // 6 - Timing Mark
+    TIMINGMARK = 0x06,
+
+    // 32 - Terminal Speed
+    TERMSPEED = 0x20,
+
+    // 33 - Remote Flow Control
+    RFC = 0x21,
+
+    // 34 - Line Mode
+    LINEMODE = 0x22,
+
+    // 36 - Environment Variables
+    EV = 0x24,
+
     // 24 - Terminal Type
     TERMTYPE = 0x18,
 
+    // 25 - End Of Record
+    EOR = 0x19,
+
     // 31 - Window Size
-    WINDOWSIZE = 0x1f,
+    NAWS = 0x1F,
 
     // 39 - New Environment
     NEWENVIRONMENT = 0x27,
+
+    // 42 - Character Set
+    CHARSET = 0x2A,
 
     // 70 - MUD Server Status Protocol
     // https://mudhalla.net/tintin/protocols/mssp/
@@ -62,61 +128,24 @@ public enum ProtocolValue : byte
     // 91 - MUD eXtension Protocol
     // https://www.zuggsoft.com/zmud/mxp.htm
     // https://discworld.starturtle.net/lpc/playing/documentation.c?path=%2fconcepts%2fmxp
-    MXP = 0x5b,
+    MXP = 0x5B,
 
     // 93 - Zenith MUD Protocol
     // https://discworld.starturtle.net/lpc/playing/documentation.c?path=%2fconcepts%2fzmp
-    ZMP = 0x5d,
+    ZMP = 0x5D,
+
+    // 102 - Aardwolf Telnet Protocol
+    AARDWOLF = 0x66,
+
+    // 200 - Achaea Telnet Protocol
+    ATCP = 0xC8,
 
     // 201 - Generic MUD Control Protocol
     // https://tintin.mudhalla.net/protocols/gmcp/
     // https://discworld.starturtle.net/lpc/playing/documentation.c?path=%2fconcepts%2fgmcp
-    GMCP = 0xc9
+    GMCP = 0xC9
 }
-// ReSharper enable InconsistentNaming
 
-/*
-https://mudcoders.fandom.com/wiki/List_of_Telnet_Options
- 
-https://github.com/daxuzi/mushclient/blob/master/MUSHclient/worlds/plugins/Code_Chart.xml
+// https://mudcoders.fandom.com/wiki/List_of_Telnet_Options
 
-[0xEF] = "EOR"
-[0xF0] = "SE"
-[0xF1] = "NOP"
-[0xF2] = "DM"
-[0xF3] = "BRK"
-[0xF4] = "IP"
-[0xF5] = "AO"
-[0xF6] = "AYT"
-[0xF7] = "EC"
-[0xF8] = "EL"
-[0xF9] = "GA"
-[0xFA] = "SB"
-[0xFB] = "WILL"
-[0xFC] = "WONT"
-[0xFD] = "DO"
-[0xFE] = "DONT"
-[0xFF] = "IAC"
- 
-[0x01] = "Echo",                    --   1 Echo
-[0x03] = "Suppress Go-ahead (SGA)", --   3 Suppress go ahead
-[0x05] = "Status",                  --   5 Status
-[0x06] = "Timing Mark",             --   6 Timing mark
-[0x18] = "Termtype",                --  24 Terminal type
-[0x19] = "End of record (EOR)",     --  25 EOR
-[0x1F] = "Window Size (NAWS)",      --  31 Window size
-[0x20] = "Terminal Speed",          --  32 Terminal speed
-[0x21] = "RFC",                     --  33 Remote flow control
-[0x22] = "Line Mode",               --  34 Line mode
-[0x24] = "EV",                      --  36 Environment variables
-[0x2A] = "Charset",                 --  42 Character set
-[0x46] = "MSSP",                    --  70 MUD Server Status Protocol
-[0x55] = "MCCP1",                   --  85 MUD Compression Protocol v1
-[0x56] = "MCCP2",                   --  86 MUD Compression Protocol v2
-[0x5A] = "MSP",                     --  90 (MUD Sound Protocol)
-[0x5B] = "MXP",                     --  91 (MUD eXtension Protocol)
-[0x5D] = "ZMP",                     --  93 (Zenith Mud Protocol)
-[0x66] = "Aardwolf",                -- 102 (Aardwolf telnet protocol)
-[0xC8] = "ATCP",                    -- 200 ATCP (Achaea Telnet Protocol)
-[0xC9] = "ATCP2/GMCP",              -- 201 ATCP2/GMCP (Generic Mud Control Protocol)
-*/
+// https://github.com/daxuzi/mushclient/blob/master/MUSHclient/worlds/plugins/Code_Chart.xml
