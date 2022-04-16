@@ -28,7 +28,7 @@ proxyPortOption.AddAlias("-l");
 rootCommand.Add(proxyPortOption);
 
 Option<bool> mccp2Option =
-    new("--mccp2", "Enable MUD Client Compression V2 (MCCP2) if the server supports it.");
+    new("--mccp", "Enable MUD Client Compression V2 (MCCP2) if the server supports it.");
 mccp2Option.AddAlias("-c");
 rootCommand.Add(mccp2Option);
 

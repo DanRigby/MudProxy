@@ -46,10 +46,17 @@ public static class TelnetCommandHandler
             }
         }
 
-        if (ProtocolSequence.IsMccp2Negotiation(inputBuffer))
+        if (ProtocolSequence.IsMccp3Negotiation(inputBuffer))
         {
             outputBuffer.Add((byte)ProtocolValue.IAC);
-            outputBuffer.Add(proxyConfig.EnableMccp2 && !isClient ? (byte)ProtocolValue.DO : (byte)ProtocolValue.DONT);
+            outputBuffer.Add((byte)ProtocolValue.DONT);
+            outputBuffer.Add((byte)ProtocolValue.MCCP3);
+            shouldPassThrough = false;
+        }
+        else if (ProtocolSequence.IsMccp2Negotiation(inputBuffer))
+        {
+            outputBuffer.Add((byte)ProtocolValue.IAC);
+            outputBuffer.Add(proxyConfig.EnableMccp && !isClient ? (byte)ProtocolValue.DO : (byte)ProtocolValue.DONT);
             outputBuffer.Add((byte)ProtocolValue.MCCP2);
             shouldPassThrough = false;
         }

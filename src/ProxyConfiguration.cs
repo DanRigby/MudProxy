@@ -2,10 +2,10 @@
 
 public class ProxyConfiguration
 {
-    public ProxyConfiguration(bool enableMccp2)
+    public ProxyConfiguration(bool enableMccp)
     {
-        EnableMccp2 = enableMccp2;
+        EnableMccp = enableMccp;
     }
 
-    public bool EnableMccp2 { get; }
+    public bool EnableMccp { get; }
 }
