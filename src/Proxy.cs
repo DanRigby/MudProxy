@@ -1,9 +1,9 @@
 ﻿using System.Buffers;
 using System.Collections.Concurrent;
-using System.IO.Compression;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using ICSharpCode.SharpZipLib.Zip.Compression;
 
 namespace MudProxy;
 
@@ -16,7 +16,6 @@ public class Proxy
 
     private NetworkStream? _hostNetworkStream;
     private NetworkStream? _primaryClientNetworkStream;
-    private bool _compressionEnabled;
     private readonly ConcurrentDictionary<NetworkStream, byte> _clientStreams = new();
     private readonly ProxyConfiguration _proxyConfig;
 
@@ -87,24 +86,41 @@ public class Proxy
             await using NetworkStream hostNetworkStream = hostClient.GetStream();
             _hostNetworkStream = hostNetworkStream;
 
+            Inflater zLibInflater = new();
+            bool compressionEnabled = false;
+            bool processingIncomplete = false;
+
+            byte[] rawBuffer = ArrayPool<byte>.Shared.Rent(1024 * 8); // 8KB
             byte[] buffer = ArrayPool<byte>.Shared.Rent(1024 * 8); // 8KB
+
+            int index = 0;
+            int bytesRead = 0;
             while (true)
             {
-                int bytesRead = await hostNetworkStream.ReadAsync(buffer, cancelToken);
-                if (bytesRead == 0)
+                if (!processingIncomplete)
                 {
-                    break;
+                    index = 0;
+                    bytesRead = await hostNetworkStream.ReadAsync(rawBuffer, cancelToken);
+                }
+                else
+                {
+                    processingIncomplete = false;
                 }
 
-                int index = 0;
-                List<byte> outputBuffer = new();
-
-                Decompress:
-                if (_compressionEnabled)
+                if (compressionEnabled)
                 {
-                    ZLibStream zLibStream = new(
-                        new MemoryStream(buffer, index, bytesRead), CompressionMode.Decompress, false);
-                    bytesRead = await zLibStream.ReadAsync(buffer, cancelToken);
+                    zLibInflater.SetInput(rawBuffer, index, bytesRead - index);
+                    bytesRead = zLibInflater.Inflate(buffer, index, buffer.Length - index);
+                }
+                else
+                {
+                    Array.Copy(rawBuffer, index, buffer, index, bytesRead - index);
+                }
+
+                if (bytesRead == 0)
+                {
+                    // Host disconnected
+                    break;
                 }
 
                 int clientDataLength = 0;
@@ -113,6 +129,7 @@ public class Proxy
                 int hostDebugOutputLength = 0;
                 byte[] hostDebugOutput = ArrayPool<byte>.Shared.Rent(bytesRead);
 
+                List<byte> outputBuffer = new();
                 for (; index < bytesRead; index++)
                 {
                     if (buffer[index] == (byte)ProtocolValue.IAC)
@@ -130,7 +147,7 @@ public class Proxy
 
                         if (compressionStarted)
                         {
-                            _compressionEnabled = true;
+                            compressionEnabled = true;
                             break;
                         }
                     }
@@ -167,12 +184,12 @@ public class Proxy
 
                 if (index + 1 < bytesRead)
                 {
-                    // We need to decompress the rest of the data
-                    goto Decompress;
+                    processingIncomplete = true;
                 }
             }
 
             ArrayPool<byte>.Shared.Return(buffer);
+            ArrayPool<byte>.Shared.Return(rawBuffer);
         }
         catch (OperationCanceledException)
         {
