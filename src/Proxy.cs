@@ -194,7 +194,7 @@ public class Proxy
             await using NetworkStream clientNetworkStream = client.GetStream();
 
             _clientStreams[clientNetworkStream] = 0;
-            _primaryClientNetworkStream = clientNetworkStream;
+            _primaryClientNetworkStream ??= clientNetworkStream;
 
             byte[] buffer = ArrayPool<byte>.Shared.Rent(1024 * 8); // 8KB
             while (true)
@@ -204,9 +204,18 @@ public class Proxy
                 {
                     Console.WriteLine("Client disconnected {0}:{1}", client.Client.LocalEndPoint,
                         client.Client.RemoteEndPoint);
+
                     _clientStreams.TryRemove(clientNetworkStream, out _);
+
+                    if (_primaryClientNetworkStream == clientNetworkStream)
+                    {
+                        _primaryClientNetworkStream = null;
+                    }
+
                     break;
                 }
+
+                bool isPrimaryClient = clientNetworkStream == _primaryClientNetworkStream;
 
                 int hostDataLength = 0;
                 byte[] hostData = ArrayPool<byte>.Shared.Rent(bytesRead);
@@ -221,9 +230,11 @@ public class Proxy
                     {
                         (int bytesProcessed, bool passThrough, bool _) =
                             TelnetCommandHandler.ProcessCommand(
-                                buffer[index..bytesRead], outputBuffer, true, _proxyConfig);
-                        // Only send telnet commands from the most recently connected client to the host
-                        if (passThrough && clientNetworkStream == _primaryClientNetworkStream)
+                                buffer[index..bytesRead], outputBuffer, true, _proxyConfig, isPrimaryClient);
+
+                        // Only send telnet commands from the client that connected first (the primary)
+                        // If the first connected client disconnects, the next client to connect will become the primary
+                        if (passThrough && isPrimaryClient)
                         {
                             Array.Copy(buffer, index, hostData, hostDataLength, bytesProcessed);
                             hostDataLength += bytesProcessed;

@@ -5,7 +5,8 @@ namespace MudProxy;
 public static class TelnetCommandHandler
 {
     public static HandlerResult ProcessCommand(
-        byte[] inputBuffer, List<byte> outputBuffer, bool isClient, ProxyConfiguration proxyConfig)
+        byte[] inputBuffer, List<byte> outputBuffer, bool isClient, ProxyConfiguration proxyConfig,
+        bool showOutput = true)
     {
         int bytesProcessed = 1;
         bool shouldPassThrough = true;
@@ -19,21 +20,26 @@ public static class TelnetCommandHandler
                 case (byte)ProtocolValue.WONT:
                 case (byte)ProtocolValue.DO:
                 case (byte)ProtocolValue.DONT:
-                    bytesProcessed = 3;
+                    // Length being < 3 shouldn't happen in this case, but we'll check anyway
+                    bytesProcessed = inputBuffer.Length > 2 ? 3 : 2;
                     break;
                 case (byte)ProtocolValue.SB:
                 {
                     for (int i = 2; i < inputBuffer.Length; i++)
                     {
+                        bytesProcessed = i + 1;
                         if (inputBuffer[i] == (byte)ProtocolValue.SE)
                         {
-                            bytesProcessed = i + 1;
                             break;
                         }
                     }
 
                     break;
                 }
+                // The SE value can arrive in a different packet then the SB value.
+                case (byte)ProtocolValue.SE:
+                    bytesProcessed = 2;
+                    break;
                 default:
                     bytesProcessed = 2;
                     break;
@@ -60,9 +66,12 @@ public static class TelnetCommandHandler
             shouldPassThrough = false;
         }
 
-        Console.WriteLine("{0}: {1}",
-            isClient ? "[CLIENT]" : "[HOST]",
-            CommandsToString(inputBuffer.AsSpan()[..bytesProcessed]));
+        if (showOutput)
+        {
+            Console.WriteLine("{0}: {1}",
+                isClient ? "[CLIENT]" : "[HOST]",
+                CommandsToString(inputBuffer.AsSpan()[..bytesProcessed]));
+        }
 
         return new HandlerResult(bytesProcessed, shouldPassThrough, compressionStarted);
     }
