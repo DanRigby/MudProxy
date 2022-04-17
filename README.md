@@ -1,4 +1,6 @@
 ﻿# MudProxy
+ 
+![screenshot](https://user-images.githubusercontent.com/114417/163694839-1b3c6dc5-b092-45ed-ade6-afb13d07315d.png)
 
 ## What is MudProxy?
 
