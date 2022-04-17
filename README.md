@@ -18,7 +18,7 @@ MudProxy is a simple multi-client proxy for use with Multi User Dungeon (MUD) se
 ### Primary Client
 
  * The first client to connect to the proxy is deemed the primary client.
- * So as not to flood the server with multiple responses to every telnet command, only the primary clients telnet commands are sent to the server. Data is always sent from all clients.
+ * So as not to flood the server with multiple responses to every telnet command, only the primary client's telnet commands are sent to the server. Non Telnet command data is sent from all clients to the MUD server.
  * If the primary client disconnects, the next client to connect will become the new primary.
 
 ## Warnings

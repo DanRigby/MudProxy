@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System.Buffers;
+using System.Text;
 
 namespace MudProxy;
 
@@ -91,30 +92,59 @@ public static class TelnetCommandHandler
         sb.Append("IAC");
 
         bool inSubOption = false;
+        bool isSubOptionFirstByte = false;
+        byte[] subOptionBytes = ArrayPool<byte>.Shared.Rent(commandBuffer.Length);
+        int subOptionBytesLength = 0;
         for (int i = 1; i < commandBuffer.Length; i++)
         {
-            sb.Append(' ');
-
-            if (commandBuffer[i] == (byte)ProtocolValue.SE)
+            if (commandBuffer[i] == (byte)ProtocolValue.IAC)
             {
                 inSubOption = false;
+
+                if (subOptionBytesLength > 0)
+                {
+                    sb.Append(' ');
+                    sb.Append(Encoding.ASCII.GetString(subOptionBytes, 0, subOptionBytesLength));
+                    subOptionBytesLength = 0;
+                }
             }
 
-            string? enumValue = Enum.GetName(typeof(ProtocolValue), commandBuffer[i]);
-            if (inSubOption || string.IsNullOrEmpty(enumValue))
+            if (inSubOption
+                && !isSubOptionFirstByte
+                // 32 -> 126 are printable ASCII characters
+                && commandBuffer[i] >= 32
+                && commandBuffer[i] <= 126)
             {
-                sb.Append(string.Format("0x{0:X2} ({0})", commandBuffer[i]));
+                subOptionBytes[subOptionBytesLength++] = commandBuffer[i];
             }
             else
             {
-                sb.Append(enumValue);
+                sb.Append(' ');
+                string? enumValue = Enum.GetName(typeof(ProtocolValue), commandBuffer[i]);
+                sb.Append(string.IsNullOrEmpty(enumValue)
+                    ? string.Format("0x{0:X2} ({0})", commandBuffer[i])
+                    : enumValue);
+            }
+
+            if (isSubOptionFirstByte)
+            {
+                isSubOptionFirstByte = false;
             }
 
             if (commandBuffer[i] == (byte)ProtocolValue.SB)
             {
                 inSubOption = true;
+                isSubOptionFirstByte = true;
             }
         }
+
+        if (subOptionBytesLength > 0)
+        {
+            sb.Append(' ');
+            sb.Append(Encoding.ASCII.GetString(subOptionBytes, 0, subOptionBytesLength));
+        }
+
+        ArrayPool<byte>.Shared.Return(subOptionBytes);
 
         return sb.ToString();
     }
