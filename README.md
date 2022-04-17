@@ -23,9 +23,9 @@ MudProxy is a simple multi-client proxy for use with Multi User Dungeon (MUD) se
 
 ## Warnings
 
- * Usage of a proxy such as this, especially to enable connecting with multiple client may be against the rules for some MUD servers. Please check the rules for your server before using.
- * The proxy displays all client communications in plain text in it's console. This includes passwords that are sent as part of logging in.
- * There probably are bugs. I've only tested this proxy with a few servers. Please report any bugs you find.
+ * Usage of a proxy such as this, especially to enable connecting with multiple clients may be against the rules for some MUD servers. Please check the rules for your server before using.
+ * The proxy displays all client communications in plain text in the console. This includes passwords that are sent as part of logging in to a MUD server.
+ * There are probably bugs. I've only tested this proxy with a few servers. Please report any bugs you find.
 
 ## Using
 
