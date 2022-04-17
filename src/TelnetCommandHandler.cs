@@ -8,8 +8,7 @@ public record HandlerResult(int BytesProcessed, bool PassThrough, bool Compressi
 public static class TelnetCommandHandler
 {
     public static HandlerResult ProcessCommand(
-        byte[] inputBuffer, List<byte> outputBuffer, bool isClient, ProxyConfiguration proxyConfig,
-        bool showOutput = true)
+        byte[] inputBuffer, List<byte> outputBuffer, bool isClient, ProxyConfiguration proxyConfig)
     {
         int bytesProcessed = 1;
         bool shouldPassThrough = true;
@@ -74,13 +73,6 @@ public static class TelnetCommandHandler
             outputBuffer.Add((byte)ProtocolValue.DONT);
             outputBuffer.Add((byte)ProtocolValue.MCCP1);
             shouldPassThrough = false;
-        }
-
-        if (showOutput)
-        {
-            Console.WriteLine("{0}: {1}",
-                isClient ? "[CLIENT]" : "[HOST]",
-                CommandsToString(inputBuffer.AsSpan()[..bytesProcessed]));
         }
 
         return new HandlerResult(bytesProcessed, shouldPassThrough, compressionStarted);

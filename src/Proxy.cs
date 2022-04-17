@@ -19,6 +19,8 @@ public class Proxy
     private readonly ConcurrentDictionary<NetworkStream, byte> _clientStreams = new();
     private readonly ProxyConfiguration _proxyConfig;
 
+    private const int BufferSize = 1024 * 8; // 8KB
+
     public async Task ConnectToHostAsync(string hostName, int port, CancellationToken cancelToken)
     {
         try
@@ -81,6 +83,11 @@ public class Proxy
 
     private async Task ProcessHostDataAsync(TcpClient hostClient, CancellationToken cancelToken)
     {
+        byte[] rawHostData = ArrayPool<byte>.Shared.Rent(BufferSize);
+        byte[] hostData = ArrayPool<byte>.Shared.Rent(BufferSize);
+        byte[] clientData = ArrayPool<byte>.Shared.Rent(BufferSize);
+        byte[] consoleOutput = ArrayPool<byte>.Shared.Rent(BufferSize);
+
         try
         {
             await using NetworkStream hostNetworkStream = hostClient.GetStream();
@@ -90,17 +97,15 @@ public class Proxy
             bool compressionEnabled = false;
             bool processingIncomplete = false;
 
-            byte[] rawBuffer = ArrayPool<byte>.Shared.Rent(1024 * 8); // 8KB
-            byte[] buffer = ArrayPool<byte>.Shared.Rent(1024 * 8); // 8KB
-
             int index = 0;
             int bytesRead = 0;
+
             while (true)
             {
                 if (!processingIncomplete)
                 {
                     index = 0;
-                    bytesRead = await hostNetworkStream.ReadAsync(rawBuffer, cancelToken);
+                    bytesRead = await hostNetworkStream.ReadAsync(rawHostData, cancelToken);
                 }
                 else
                 {
@@ -109,12 +114,12 @@ public class Proxy
 
                 if (compressionEnabled)
                 {
-                    zLibInflater.SetInput(rawBuffer, index, bytesRead - index);
-                    bytesRead = zLibInflater.Inflate(buffer, index, buffer.Length - index);
+                    zLibInflater.SetInput(rawHostData, index, bytesRead - index);
+                    bytesRead = zLibInflater.Inflate(hostData, index, hostData.Length - index);
                 }
                 else
                 {
-                    Array.Copy(rawBuffer, index, buffer, index, bytesRead - index);
+                    Array.Copy(rawHostData, index, hostData, index, bytesRead - index);
                 }
 
                 if (bytesRead == 0)
@@ -124,24 +129,32 @@ public class Proxy
                 }
 
                 int clientDataLength = 0;
-                byte[] clientData = ArrayPool<byte>.Shared.Rent(bytesRead);
-
-                int hostDebugOutputLength = 0;
-                byte[] hostDebugOutput = ArrayPool<byte>.Shared.Rent(bytesRead);
-
+                int consoleOutputLength = 0;
                 List<byte> outputBuffer = new();
+
                 for (; index < bytesRead; index++)
                 {
-                    if (buffer[index] == (byte)ProtocolValue.IAC)
+                    if (hostData[index] == (byte)ProtocolValue.IAC)
                     {
+                        if (consoleOutputLength > 0)
+                        {
+                            Console.WriteLine("[HOST]: {0}",
+                                Encoding.ASCII.GetString(consoleOutput, 0, consoleOutputLength));
+                            consoleOutputLength = 0;
+                        }
+
                         (int bytesProcessed, bool passThrough, bool compressionStarted) =
                             TelnetCommandHandler.ProcessCommand(
-                                buffer[index..bytesRead], outputBuffer, false, _proxyConfig);
+                                hostData[index..bytesRead], outputBuffer, false, _proxyConfig);
+
                         if (passThrough)
                         {
-                            Array.Copy(buffer, index, clientData, clientDataLength, bytesProcessed);
+                            Array.Copy(hostData, index, clientData, clientDataLength, bytesProcessed);
                             clientDataLength += bytesProcessed;
                         }
+
+                        Console.WriteLine("[HOST]: {0}",
+                            TelnetCommandHandler.CommandsToString(hostData.AsSpan()[index..(index + bytesProcessed)]));
 
                         index += bytesProcessed - 1;
 
@@ -153,8 +166,8 @@ public class Proxy
                     }
                     else
                     {
-                        clientData[clientDataLength++] = buffer[index];
-                        hostDebugOutput[hostDebugOutputLength++] = buffer[index];
+                        clientData[clientDataLength++] = hostData[index];
+                        consoleOutput[consoleOutputLength++] = hostData[index];
                     }
                 }
 
@@ -166,10 +179,10 @@ public class Proxy
                     }
                 }
 
-                if (hostDebugOutputLength > 0)
+                if (consoleOutputLength > 0)
                 {
                     Console.WriteLine("[HOST]: {0}",
-                        Encoding.ASCII.GetString(hostDebugOutput, 0, hostDebugOutputLength));
+                        Encoding.ASCII.GetString(consoleOutput, 0, consoleOutputLength));
                 }
 
                 if (outputBuffer.Count > 0)
@@ -179,17 +192,11 @@ public class Proxy
                         outputBuffer.ToArray().AsMemory(0, outputBuffer.Count), cancelToken);
                 }
 
-                ArrayPool<byte>.Shared.Return(clientData);
-                ArrayPool<byte>.Shared.Return(hostDebugOutput);
-
                 if (index + 1 < bytesRead)
                 {
                     processingIncomplete = true;
                 }
             }
-
-            ArrayPool<byte>.Shared.Return(buffer);
-            ArrayPool<byte>.Shared.Return(rawBuffer);
         }
         catch (OperationCanceledException)
         {
@@ -200,12 +207,21 @@ public class Proxy
         }
         finally
         {
+            ArrayPool<byte>.Shared.Return(hostData);
+            ArrayPool<byte>.Shared.Return(rawHostData);
+            ArrayPool<byte>.Shared.Return(clientData);
+            ArrayPool<byte>.Shared.Return(consoleOutput);
+
             hostClient.Close();
         }
     }
 
     private async Task ProcessClientDataAsync(TcpClient client, CancellationToken cancelToken)
     {
+        byte[] clientData = ArrayPool<byte>.Shared.Rent(BufferSize);
+        byte[] hostData = ArrayPool<byte>.Shared.Rent(BufferSize);
+        byte[] consoleOutput = ArrayPool<byte>.Shared.Rent(BufferSize);
+
         try
         {
             await using NetworkStream clientNetworkStream = client.GetStream();
@@ -213,10 +229,9 @@ public class Proxy
             _clientStreams[clientNetworkStream] = 0;
             _primaryClientNetworkStream ??= clientNetworkStream;
 
-            byte[] buffer = ArrayPool<byte>.Shared.Rent(1024 * 8); // 8KB
             while (true)
             {
-                int bytesRead = await clientNetworkStream.ReadAsync(buffer, cancelToken);
+                int bytesRead = await clientNetworkStream.ReadAsync(clientData, cancelToken);
                 if (bytesRead == 0)
                 {
                     Console.WriteLine("Client disconnected {0}:{1}", client.Client.LocalEndPoint,
@@ -235,34 +250,45 @@ public class Proxy
                 bool isPrimaryClient = clientNetworkStream == _primaryClientNetworkStream;
 
                 int hostDataLength = 0;
-                byte[] hostData = ArrayPool<byte>.Shared.Rent(bytesRead);
-
-                int clientDebugOutputLength = 0;
-                byte[] clientDebugOutput = ArrayPool<byte>.Shared.Rent(bytesRead);
-
+                int consoleOutputLength = 0;
                 List<byte> outputBuffer = new();
+
                 for (int index = 0; index < bytesRead; index++)
                 {
-                    if (buffer[index] == (byte)ProtocolValue.IAC)
+                    if (clientData[index] == (byte)ProtocolValue.IAC)
                     {
+                        if (consoleOutputLength > 0)
+                        {
+                            Console.WriteLine("[CLIENT]: {0}",
+                                Encoding.ASCII.GetString(consoleOutput, 0, consoleOutputLength));
+                            consoleOutputLength = 0;
+                        }
+
                         (int bytesProcessed, bool passThrough, bool _) =
                             TelnetCommandHandler.ProcessCommand(
-                                buffer[index..bytesRead], outputBuffer, true, _proxyConfig, isPrimaryClient);
+                                clientData[index..bytesRead], outputBuffer, true, _proxyConfig);
 
                         // Only send telnet commands from the client that connected first (the primary)
                         // If the first connected client disconnects, the next client to connect will become the primary
                         if (passThrough && isPrimaryClient)
                         {
-                            Array.Copy(buffer, index, hostData, hostDataLength, bytesProcessed);
+                            Array.Copy(clientData, index, hostData, hostDataLength, bytesProcessed);
                             hostDataLength += bytesProcessed;
+                        }
+
+                        if (isPrimaryClient)
+                        {
+                            Console.WriteLine("[CLIENT]: {0}",
+                                TelnetCommandHandler.CommandsToString(
+                                    hostData.AsSpan()[index..(index + bytesProcessed)]));
                         }
 
                         index += bytesProcessed - 1;
                     }
                     else
                     {
-                        hostData[hostDataLength++] = buffer[index];
-                        clientDebugOutput[clientDebugOutputLength++] = buffer[index];
+                        hostData[hostDataLength++] = clientData[index];
+                        consoleOutput[consoleOutputLength++] = clientData[index];
                     }
                 }
 
@@ -274,10 +300,10 @@ public class Proxy
                     }
                 }
 
-                if (clientDebugOutputLength > 0)
+                if (consoleOutputLength > 0)
                 {
                     Console.WriteLine("[CLIENT]: {0}",
-                        Encoding.ASCII.GetString(clientDebugOutput, 0, clientDebugOutputLength));
+                        Encoding.ASCII.GetString(consoleOutput, 0, consoleOutputLength));
                 }
 
                 if (outputBuffer.Count > 0)
@@ -286,12 +312,7 @@ public class Proxy
                     await clientNetworkStream.WriteAsync(
                         outputBuffer.ToArray().AsMemory(0, outputBuffer.Count), cancelToken);
                 }
-
-                ArrayPool<byte>.Shared.Return(hostData);
-                ArrayPool<byte>.Shared.Return(clientDebugOutput);
             }
-
-            ArrayPool<byte>.Shared.Return(buffer);
         }
         catch (OperationCanceledException)
         {
@@ -303,6 +324,10 @@ public class Proxy
         }
         finally
         {
+            ArrayPool<byte>.Shared.Return(clientData);
+            ArrayPool<byte>.Shared.Return(hostData);
+            ArrayPool<byte>.Shared.Return(consoleOutput);
+
             client.Close();
         }
     }
