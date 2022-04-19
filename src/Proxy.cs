@@ -104,22 +104,25 @@ public class Proxy
             {
                 if (!processingIncomplete)
                 {
-                    index = 0;
-                    bytesRead = await hostNetworkStream.ReadAsync(rawHostData, cancelToken);
+                    bytesRead = await hostNetworkStream.ReadAsync(
+                        rawHostData.AsMemory(0, rawHostData.Length), cancelToken);
                 }
                 else
                 {
+                    Array.Copy(hostData, index, rawHostData, 0, bytesRead);
                     processingIncomplete = false;
                 }
 
+                index = 0;
+
                 if (compressionEnabled)
                 {
-                    zLibInflater.SetInput(rawHostData, index, bytesRead - index);
-                    bytesRead = zLibInflater.Inflate(hostData, index, hostData.Length - index);
+                    zLibInflater.SetInput(rawHostData, 0, bytesRead);
+                    bytesRead = zLibInflater.Inflate(hostData, 0, hostData.Length);
                 }
                 else
                 {
-                    Array.Copy(rawHostData, index, hostData, index, bytesRead - index);
+                    Array.Copy(rawHostData, 0, hostData, 0, bytesRead);
                 }
 
                 if (bytesRead == 0)
@@ -195,6 +198,7 @@ public class Proxy
                 if (index + 1 < bytesRead)
                 {
                     processingIncomplete = true;
+                    bytesRead -= index;
                 }
             }
         }
