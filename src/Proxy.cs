@@ -135,7 +135,7 @@ public class Proxy
                 int consoleOutputLength = 0;
                 List<byte> outputBuffer = new();
 
-                for (; index < bytesRead; index++)
+                for (; index < bytesRead;)
                 {
                     if (hostData[index] == (byte)ProtocolValue.IAC)
                     {
@@ -159,7 +159,7 @@ public class Proxy
                         Console.WriteLine("[HOST]: {0}",
                             TelnetCommandHandler.CommandsToString(hostData.AsSpan()[index..(index + bytesProcessed)]));
 
-                        index += bytesProcessed - 1;
+                        index += bytesProcessed;
 
                         if (compressionStarted)
                         {
@@ -171,6 +171,7 @@ public class Proxy
                     {
                         clientData[clientDataLength++] = hostData[index];
                         consoleOutput[consoleOutputLength++] = hostData[index];
+                        index++;
                     }
                 }
 
@@ -195,7 +196,7 @@ public class Proxy
                         outputBuffer.ToArray().AsMemory(0, outputBuffer.Count), cancelToken);
                 }
 
-                if (index + 1 < bytesRead)
+                if (index < bytesRead)
                 {
                     processingIncomplete = true;
                     bytesRead -= index;
@@ -298,7 +299,7 @@ public class Proxy
 
                 if (hostDataLength > 0)
                 {
-                    if (_hostNetworkStream != null)
+                    if (_hostNetworkStream != null && _hostNetworkStream.CanWrite)
                     {
                         await _hostNetworkStream.WriteAsync(hostData.AsMemory(0, hostDataLength), cancelToken);
                     }
