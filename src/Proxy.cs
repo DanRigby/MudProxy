@@ -167,6 +167,16 @@ public class Proxy
                     else
                     {
                         consoleOutput.Write(currentByteArray);
+
+                        if (consoleOutput.WrittenCount >= 4 &&
+                            consoleOutput.WrittenSpan[^4] == 0x3C /* < */ &&
+                            consoleOutput.WrittenSpan[^3] is 0x42 /* B */ &&
+                            consoleOutput.WrittenSpan[^2] is 0x52 /* R */ &&
+                            consoleOutput.WrittenSpan[^1] is 0x3E /* > */
+                        )
+                        {
+                            FlushConsoleOutput();
+                        }
                     }
                 }
             }
@@ -196,6 +206,7 @@ public class Proxy
             TelnetCommandParser commandParser = new();
             TelnetCommandHandler commandHandler = new(_proxyConfig, clientNetworkStream, isHost: false);
             ArrayBufferWriter<byte> consoleOutput = new(1024 * 8);
+            ArrayBufferWriter<byte> clientData = new(1024 * 8);
             byte[] currentByteArray = new byte[1];
 
             bool inCommand = false;
@@ -215,12 +226,29 @@ public class Proxy
             {
                 bool isPrimaryClient = clientNetworkStream == _primaryClientNetworkStream;
 
+                if (!clientNetworkStream.DataAvailable)
+                {
+                    if (clientData.WrittenCount > 0 && _hostNetworkStream is not null && _hostNetworkStream.CanWrite)
+                    {
+                        await _hostNetworkStream.WriteAsync(clientData.WrittenMemory, cancelToken);
+                        clientData.Clear();
+
+                        FlushConsoleOutput();
+                    }
+                }
+
                 int readResult = clientNetworkStream.ReadByte();
                 if (readResult is -1)
                 {
                     Console.WriteLine(
                         "Client disconnected {0}:{1}", client.Client.LocalEndPoint, client.Client.RemoteEndPoint);
+
                     _clientStreams.TryRemove(clientNetworkStream, out _);
+                    if (_primaryClientNetworkStream == clientNetworkStream)
+                    {
+                        _primaryClientNetworkStream = null;
+                    }
+
                     break;
                 }
 
@@ -260,10 +288,7 @@ public class Proxy
                 }
                 else
                 {
-                    if (_hostNetworkStream is not null && _hostNetworkStream.CanWrite)
-                    {
-                        _hostNetworkStream.WriteByte(currentByte);
-                    }
+                    clientData.Write(currentByteArray);
 
                     if (currentByte is 0x0A /* LF */)
                     {
