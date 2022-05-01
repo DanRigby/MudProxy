@@ -1,6 +1,6 @@
 ﻿# MudProxy
  
-[![build](https://github.com/DanRigby/MudProxy/actions/workflows/build.yml/badge.svg)](https://github.com/DanRigby/MudProxy/actions/workflows/build.yml)
+[![build](https://github.com/DanRigby/MudProxy/actions/workflows/build.yml/badge.svg)](https://github.com/DanRigby/MudProxy/actions/workflows/build.yml) [![Twitter Follow](https://img.shields.io/twitter/follow/DanRigby.svg)](https://twitter.com/DanRigby)
  
 ![screenshot](https://user-images.githubusercontent.com/114417/163694839-1b3c6dc5-b092-45ed-ade6-afb13d07315d.png)
 
