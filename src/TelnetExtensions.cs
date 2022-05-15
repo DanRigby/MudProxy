@@ -1,6 +1,4 @@
-﻿using System.Text;
-
-namespace MudProxy;
+﻿namespace MudProxy;
 
 public static class TelnetExtensions
 {

@@ -4,7 +4,7 @@ using MudProxy;
 CancellationTokenSource cancelTokenSource = new();
 CancellationToken cancelToken = cancelTokenSource.Token;
 
-Console.CancelKeyPress += delegate (object? _, ConsoleCancelEventArgs e)
+Console.CancelKeyPress += (object? _, ConsoleCancelEventArgs e) =>
 {
     e.Cancel = true;
     cancelTokenSource.Cancel();
