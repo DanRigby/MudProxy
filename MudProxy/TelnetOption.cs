@@ -1,5 +1,7 @@
 ﻿// ReSharper disable IdentifierTypo
 // ReSharper disable CommentTypo
+// ReSharper disable UnusedMember.Global
+// ReSharper disable InconsistentNaming
 
 // https://mudcoders.fandom.com/wiki/List_of_Telnet_Options
 // https://github.com/daxuzi/mushclient/blob/master/MUSHclient/worlds/plugins/Code_Chart.xml
