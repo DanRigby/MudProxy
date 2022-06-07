@@ -1,4 +1,6 @@
-﻿namespace MudProxy;
+﻿// ReSharper disable UnusedMember.Global
+
+namespace MudProxy;
 
 public static class TelnetCommandSequence
 {

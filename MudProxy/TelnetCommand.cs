@@ -1,4 +1,7 @@
-﻿namespace MudProxy;
+﻿// ReSharper disable UnusedMember.Global
+// ReSharper disable InconsistentNaming
+
+namespace MudProxy;
 
 public enum TelnetCommand : byte
 {

@@ -1,4 +1,6 @@
-﻿using System.CommandLine;
+﻿// ReSharper disable RedundantLambdaParameterType
+
+using System.CommandLine;
 using MudProxy;
 
 CancellationTokenSource cancelTokenSource = new();
