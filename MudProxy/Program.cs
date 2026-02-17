@@ -15,29 +15,32 @@ Console.CancelKeyPress += (object? _, ConsoleCancelEventArgs e) =>
 RootCommand rootCommand = new("MUD Proxy");
 
 Option<string> hostNameOption =
-    new("--hostname", "Hostname of the MUD server to connect to.") { IsRequired = true };
-hostNameOption.AddAlias("-h");
+    new("--hostname") { Description = "Hostname of the MUD server to connect to.", Required = true };
+hostNameOption.Aliases.Add("-h");
 rootCommand.Add(hostNameOption);
 
 Option<int> hostPortOption =
-    new("--host-port", "Port to connect to the MUD server on.") { IsRequired = true };
-hostPortOption.AddAlias("-p");
+    new("--host-port") { Description = "Port to connect to the MUD server on.", Required = true };
+hostPortOption.Aliases.Add("-p");
 rootCommand.Add(hostPortOption);
 
 Option<int> proxyPortOption =
-    new("--proxy-port", "Port the MUD proxy will listen for clients on.") { IsRequired = true };
-proxyPortOption.AddAlias("-l");
+    new("--proxy-port") { Description = "Port the MUD proxy will listen for clients on.", Required = true };
+proxyPortOption.Aliases.Add("-l");
 rootCommand.Add(proxyPortOption);
 
 Option<bool> mccp2Option =
-    new("--mccp", "Enable MUD Client Compression V2 (MCCP2) if the server supports it.");
-mccp2Option.AddAlias("-c");
+    new("--mccp") { Description = "Enable MUD Client Compression V2 (MCCP2) if the server supports it." };
+mccp2Option.Aliases.Add("-c");
 rootCommand.Add(mccp2Option);
 
-rootCommand.SetHandler(async (
-    string hostName, int hostPort, int proxyPort, bool enableMccp2
-) =>
+rootCommand.SetAction(async parseResult =>
 {
+    string hostName = parseResult.GetValue(hostNameOption)!;
+    int hostPort = parseResult.GetValue(hostPortOption);
+    int proxyPort = parseResult.GetValue(proxyPortOption);
+    bool enableMccp2 = parseResult.GetValue(mccp2Option);
+
     Proxy proxy = new(enableMccp2);
 
     Task clientTask = proxy.ListenForClientsAsync(proxyPort, cancelToken);
@@ -54,8 +57,8 @@ rootCommand.SetHandler(async (
     await Task.WhenAll(clientTask, hostTask);
 
     Console.WriteLine("Program exiting.");
-}, hostNameOption, hostPortOption, proxyPortOption, mccp2Option);
+});
 
-await rootCommand.InvokeAsync(args);
+await rootCommand.Parse(args).InvokeAsync();
 
 return 0;
